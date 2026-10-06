@@ -363,6 +363,15 @@ export default defineSchema(
       .index("by_user", ["user_id"])
       .index("by_org_user", ["org_id", "user_id"]),
 
+    sales_targets: defineTable({
+      org_id: v.string(),
+      distributor_id: v.string(),
+      month: v.string(),
+      amount: v.number(),
+      created_at: v.optional(v.string()),
+      updated_at: v.optional(v.string()),
+    }).index("by_org_month", ["org_id", "month"]),
+
     plans: defineTable({
       id: v.string(),
       name: v.optional(v.string()),

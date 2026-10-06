@@ -5,7 +5,7 @@ import { useAuth } from "@/src/auth";
 import { spacing, useTheme } from "@/src/theme";
 import { Btn, Card, Ionicons, T } from "@/src/ui";
 
-const PERKS = ["موزعون وموظفون أكثر", "تقارير أسبوعية وشهرية متقدمة", "تحليل الأرباح عبر الفترات"];
+const PERKS = ["موزعون وموظفون أكثر", "تقارير أسبوعية وشهرية متقدمة", "تحليل الأرباح عبر الفترات", "اشتراك سنوي مع شهرين مجاناً"];
 
 // Upsell card shown to trial organizations. Opens the existing upgrade flow.
 export function ProUpsell({ reason, testID = "pro-upsell-card" }: { reason: string; testID?: string }) {

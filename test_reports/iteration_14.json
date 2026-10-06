@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 14 — Full backend + frontend coverage of the 3 new features (yearly Pro subscription, trial countdown banner, sales targets with live progress) against Convex deployment fearless-ostrich-878. Backend: 20/20 new pytest cases pass in test_iteration14_yearly_targets.py. Verified: (a) GET /plans returns Pro with price=25, yearly_price=250, days=30, max_employees=15 and the three expected feature strings; (b) POST /upgrade-requests with {plan_id, billing:'yearly', payment_ref:'TEST_REF_YEARLY_14'} creates a PENDING request with days=365, price=250, billing='yearly', plan_name 'Pro (سنوي)'; a second POST while one is pending is rejected (400 — 'لديك طلب قيد المراجعة بالفعل'); teardown rejects via PATCH /dev/upgrade-requests so no real org is approved; (c) GET /targets as owner returns all FIELD_AGENTs with target/achieved/remaining/pct/daily_needed + month/days_left/days_in_month; GET /targets as agent returns only self (user_test_agent); (d) PUT /targets as agent → 403; PUT with invalid distributor → 400; PUT owner-only sets a new target (notification type 'target' delivered to agent2 inbox), amount=0 deletes it, and user_test_agent target is preserved at 5000 for 2026-10 (teardown restores belt-and-braces); (e) /stats/overview + /notifications 200 for owner/acct/agent, /dev/stats 200 for dev — sync-badge data sources healthy. Frontend web preview (390x844): owner Overview shows sync-status-badge, trial-countdown-banner is NOT rendered (correct — org_test_1 is LICENSE expiring 2027-10-05), sales-targets-card is visible with target-row-user_test_agent, target-progress-user_test_agent, target-pct-user_test_agent='48%', edit-target-user_test_agent, targets-days-left='متبقٍ 26 يوماً على نهاية الشهر · تحديث لحظي'. /upgrade screen: segment defaults to yearly ('سنوي · الأوفر' highlighted), save-badge-<id> visible ('وفّر 18% بالدفع السنوي'), free-months-badge-<id>='2 أشهر مجاناً', yearly-monthly-equiv-<id>='يعادل 20.83 USD شهرياً بدلاً من 25'. Agent (/dist) home: my-target-card renders with my-target-pct='48%', my-target-progress visible, my-target-pace='متبقٍ 2,591 · تحتاج 99.65 يومياً لـ 26 يوماً'. ACCT (/acct) and DEV (/dev) home screens load and both show sync-status-badge. No red screens, no 'Unmatched Route' on any role. Trial countdown render is verified via code review (TrialCountdown.tsx:24-27): guard requires role=OWNER + org.expires_at + ms <= WARN_DAYS*86400000 (5 trial, 7 license); since LICENSE owner is >1 year out it correctly short-circuits — matches the review request's explicit instruction to verify TRIAL path by code review in absence of a trial token.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_yearly_targets.py (NEW, 20/20 pass)",
+    "/app/test_reports/pytest/iteration14.xml"
+  ],
+  "action_items": [
+    "NON-BLOCKING (carried from iter 13): seed a TRIAL org bearer token so the TrialCountdown banner render can be validated live rather than by code review."
+  ],
+  "critical_code_review_comments": [
+    "convex/targets.ts: list() correctly restricts agents to self via isAgent(user) and sumBy(sales,'total') - sumBy(returns,'total') gives net achieved; days_left handles current-month / future-month / past-month correctly; set() enforces OWNER role, validates amount>=0, confirms distributor is a FIELD_AGENT in same org, uses amount=0 to delete, and sends notification type 'target' — all green against the review spec.",
+    "convex/http.ts: /targets GET + PUT routes bound correctly (line 72-73) with month query param + Number(amount) coercion for PUT.",
+    "src/components/SalesTargets.tsx: SalesTargetsCard uses useQuery for live refresh (reactive to any mutation on sales_targets/sales/sales_returns tables); testIDs target-row-<uid>, target-progress-<uid>, target-pct-<uid>, edit-target-<uid>, target-sheet, target-amount-input, save-target-button all match the review spec. MyTargetCard renders only when the agent has a target set — hidden branch (`if (!me?.target) return null`) is defensible but worth noting: agent2 (no target) would see nothing, which is intentional.",
+    "src/components/TrialCountdown.tsx: Owner-only guard + plan=TRIAL (5-day) / else LICENSE (7-day) thresholds; refreshes every 60s via setInterval; renders inside Overview only for owners (Overview.tsx:48). Testids trial-countdown-banner, trial-countdown-days, trial-countdown-hours, trial-countdown-upgrade-button present.",
+    "app/upgrade.tsx: hasYearly auto-selects billing='yearly' on first render; savePct uses (price*(365/days)) baseline so monthly=25*(365/30)=304.17 → saves 18%; freeMonths = (price*12 - yearly_price)/price = (300-250)/25 = 2 — matches live UI output. billing payload mapped to 'yearly' only when sel.yearly_price exists; Pending-request guard disables Btn via `disabled={hasPending || (billing === 'yearly' && !p.yearly_price)}`. All testIDs present.",
+    "Overview.tsx correctly gates SalesTargetsCard behind !isAgent (owner + acct) and MyTargetCard behind isAgent, matching role semantics."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration14_yearly_targets.py (NEW)",
+    "/app/test_reports/iteration_14.json (NEW)",
+    "/app/test_reports/pytest/iteration14.xml (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% — 20/20 iteration-14 tests pass",
+    "frontend": "100% — upgrade yearly flow, owner targets card, agent my-target card, trial banner suppression, sync-badge on all 4 role homes verified"
+  },
+  "seed_data_creation": "Created 1 PENDING yearly upgrade_request for Pro on org_test_1 (payment_ref TEST_REF_YEARLY_14) then rejected it via PATCH /dev/upgrade-requests so the org is not approved. Transiently set user_test_agent2 target to 1234 to validate notify + persistence, then cleared it via amount=0. user_test_agent target restored to 5000 for 2026-10. Final state (verified post-suite): upgrade_requests all REJECTED, targets [user_test_agent=5000, user_test_agent2=0]. Real org 'Anmira'/ydmar9294@gmail.com untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Deployment is clean: Pro plan live with yearly_price=250, two REJECTED upgrade requests on org_test_1 (test leftovers, harmless), user_test_agent target 5000/2026-10 preserved, agent2 has no target. To test the trial banner render path live, a TRIAL org + bearer token still needs to be seeded (open action item from iter 13 + 14). Mutation path for POST /upgrade-requests prevents duplicates while PENDING exists — future tests must either reject existing requests via /dev/upgrade-requests first, or only call GET.",
+  "rca_of_issue": "No new bugs. One pre-existing dev console 403 on /dev route is unchanged from previous iterations and does not block the dev home from loading or the sync badge from rendering."
+}

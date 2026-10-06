@@ -20,6 +20,7 @@ const icons: Record<string, IconName> = {
   warehouse_return_rejected: "close-circle-outline",
   debt_digest: "calendar-outline",
   upgrade: "rocket-outline",
+  target: "flag-outline",
 };
 
 // Real-time notification bell, read live from Convex (useQuery). The FastAPI

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Linking, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -27,6 +27,11 @@ export default function Upgrade() {
   const [sel, setSel] = useState<any>(null);
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const hasYearly = plans.data?.some((p) => p.yearly_price);
+  // Default to yearly billing when offered, to encourage longer subscriptions.
+  useEffect(() => {
+    if (hasYearly) setBilling("yearly");
+  }, [hasYearly]);
+  const freeMonths = (p: any) => (p.yearly_price && p.price ? Math.floor((p.price * 12 - p.yearly_price) / p.price) : 0);
   const priceOf = (p: any) => (billing === "yearly" && p?.yearly_price ? p.yearly_price : p?.price);
   const savePct = (p: any) => (p.yearly_price && p.price ? Math.round((1 - p.yearly_price / (p.price * (365 / p.days))) * 100) : 0);
   const [ref, setRef] = useState("");
@@ -55,7 +60,7 @@ export default function Upgrade() {
         <Section title="الخطط المتاحة">
           {hasYearly && (
             <View style={{ marginHorizontal: -spacing.lg }}>
-              <Segments value={billing} onChange={setBilling} options={[{ key: "monthly", label: "شهري" }, { key: "yearly", label: "سنوي · وفّر أكثر" }]} />
+              <Segments value={billing} onChange={setBilling} options={[{ key: "monthly", label: "شهري" }, { key: "yearly", label: "سنوي · الأوفر" }]} />
             </View>
           )}
           {plans.isLoading ? (
@@ -72,7 +77,11 @@ export default function Upgrade() {
                 <View style={{ flexDirection: "row", gap: spacing.sm }}>
                   {billing === "yearly" && !p.yearly_price && <Badge text="شهري فقط" tone="warning" />}
                   {savePct(p) > 0 && <Badge testID={`save-badge-${p.id}`} text={`وفّر ${savePct(p)}% بالدفع السنوي`} tone="success" />}
+                  {freeMonths(p) > 0 && <Badge testID={`free-months-badge-${p.id}`} text={freeMonths(p) === 1 ? "شهر مجاني" : `${freeMonths(p)} أشهر مجاناً`} tone="brand" />}
                 </View>
+                {billing === "yearly" && !!p.yearly_price && (
+                  <T v="caption" testID={`yearly-monthly-equiv-${p.id}`}>يعادل {money(Math.round((p.yearly_price / 12) * 100) / 100)} {p.currency} شهرياً بدلاً من {money(p.price)}</T>
+                )}
                 <T v="caption">{p.days} يوماً · حتى {p.max_employees} موظفين</T>
                 {p.features?.map((f: string, i: number) => (
                   <View key={i} style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>

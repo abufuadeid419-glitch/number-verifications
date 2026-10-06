@@ -13,6 +13,8 @@ import { OwnerOnboarding } from "@/src/components/OwnerOnboarding";
 import { PendingDeliveries } from "@/src/components/PendingDeliveries";
 import { AgentStock } from "@/src/components/StockRequests";
 import { SyncBanner } from "@/src/components/SyncBanner";
+import { MyTargetCard, SalesTargetsCard } from "@/src/components/SalesTargets";
+import { TrialCountdown } from "@/src/components/TrialCountdown";
 import { useApi, useBottomChrome } from "@/src/hooks";
 import { queryClient } from "@/src/query-client";
 import { spacing, useTheme } from "@/src/theme";
@@ -43,8 +45,10 @@ export default function Overview() {
           <ErrorBox message={(stats.error as Error).message} onRetry={stats.refetch} />
         ) : (
           <>
+            {isOwner && <TrialCountdown />}
             {isOwner && <OwnerOnboarding />}
             {isAgent && <LocationCard />}
+            {isAgent && <MyTargetCard />}
             {!isAgent && (
               <Btn testID="open-reports-button" variant="secondary" icon="bar-chart-outline" title="التقارير اليومية والأسبوعية والشهرية" onPress={() => router.push("/reports")} />
             )}
@@ -75,6 +79,7 @@ export default function Overview() {
               </Section>
             )}
 
+            {!isAgent && <SalesTargetsCard />}
             {!isAgent && <Leaderboard />}
 
             <Section title="آخر الفواتير">

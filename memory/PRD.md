@@ -229,3 +229,13 @@ write-through bridge is now unused and can be removed.
 - Live connection badge: src/components/SyncBadge.tsx in AccountButton header (all roles) — Convex websocket
   state + NetInfo + offline queue (synced / syncing N / offline).
 - Testing: iteration_13 — 87 backend pass; frontend verified (TRIAL branch by code review).
+
+## Features batch (2026-06): yearly Pro, trial countdown, sales targets
+- Yearly Pro: Pro plan yearly_price 250 (vs 25/mo). /upgrade defaults to yearly, shows save %, "2 أشهر مجاناً"
+  badge and monthly-equivalent price; yearly request = 365 days.
+- Trial countdown: src/components/TrialCountdown.tsx on owner home — TRIAL ≤5 days / paid ≤7 days, days+hours,
+  ticks every minute, upgrade CTA.
+- Sales targets: convex/targets.ts (list/set) + sales_targets table; live via Convex useQuery in
+  src/components/SalesTargets.tsx (owner/acct card with edit sheet; agent "هدفي" card with daily pace);
+  REST GET/PUT /api/targets; agent notified on new target.
+- Testing: iteration_14 — 20/20 backend, frontend verified (trial banner TRIAL path by code review).

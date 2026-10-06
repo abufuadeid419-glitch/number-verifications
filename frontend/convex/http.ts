@@ -68,6 +68,9 @@ const ROUTES: Route[] = [
   ["POST", "/warehouse-returns", "m", api.returns.createWarehouse, spread],
   ["POST", "/warehouse-returns/:id/accept", "m", api.returns.acceptWarehouse, (c) => ({ token: c.token, id: c.p.id })],
   ["POST", "/warehouse-returns/:id/reject", "m", api.returns.rejectWarehouse, (c) => ({ token: c.token, id: c.p.id, reason: c.b.reason })],
+  // sales targets (live via useQuery in-app; REST kept for parity)
+  ["GET", "/targets", "q", api.targets.list, (c) => ({ token: c.token, month: c.q.get("month") ?? undefined })],
+  ["PUT", "/targets", "m", api.targets.set, (c) => ({ token: c.token, distributor_id: c.b.distributor_id, month: c.b.month, amount: Number(c.b.amount) })],
   // employees
   ["GET", "/employees", "q", api.employees.list, T],
   ["POST", "/employees/invite", "m", api.employees.invite, (c) => ({ token: c.token, name: c.b.name, employee_type: c.b.employee_type })],
