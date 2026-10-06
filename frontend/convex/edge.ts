@@ -8,6 +8,8 @@ const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 const OTP_MAX_PER_HOUR = 5;
 const VERIFY_MAX_ATTEMPTS = 5;
 
+const OTP_TTL_MS = 10 * 60 * 1000;
+
 function birdHeaders() {
   const key = process.env.BIRD_API_KEY;
   if (!key || !process.env.BIRD_BASE_URL) throw new Error("خدمة الرسائل غير مهيأة");
@@ -20,82 +22,93 @@ function birdError(status: number) {
   return "تعذر إرسال رمز التحقق، حاول لاحقاً";
 }
 
-// Internal: per-phone rate limit for OTP sends (rolling hour).
-export const noteOtpRequest = internalMutation({
-  args: { phone: v.string() },
-  handler: async (ctx, { phone }) => {
+// Codes are never stored in plain text: sha256(pepper:phone:code).
+async function hashCode(phone: string, code: string) {
+  const data = new TextEncoder().encode(`${process.env.OTP_PEPPER ?? ""}:${phone}:${code}`);
+  const d = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function randomCode() {
+  const n = new Uint32Array(1);
+  crypto.getRandomValues(n);
+  return String(n[0] % 1000000).padStart(6, "0");
+}
+
+// Internal: per-phone rate limit (rolling hour) + store the hashed code for this send.
+export const storeOtp = internalMutation({
+  args: { phone: v.string(), code_hash: v.string() },
+  handler: async (ctx, { phone, code_hash }) => {
     const hourAgo = Date.now() - 3600000;
     const rows = await ctx.db.query("otp_requests").withIndex("by_phone", (q) => q.eq("phone", phone)).collect();
     for (const r of rows) if (r.created_ms < hourAgo) await ctx.db.delete(r._id);
     const recent = rows.filter((r) => r.created_ms >= hourAgo);
     if (recent.length >= OTP_MAX_PER_HOUR) throw new Error("تم تجاوز عدد مرات الإرسال، حاول بعد ساعة");
-    await ctx.db.insert("otp_requests", { phone, created_ms: Date.now(), attempts: 0 });
+    const last = recent.sort((x, y) => y.created_ms - x.created_ms)[0];
+    if (last && Date.now() - last.created_ms < 30000) throw new Error("انتظر قليلاً قبل طلب رمز جديد");
+    await ctx.db.insert("otp_requests", { phone, created_ms: Date.now(), attempts: 0, code_hash, expires_ms: Date.now() + OTP_TTL_MS });
   },
 });
 
-// Internal: count a verify attempt against the latest OTP request; blocks brute force.
-export const noteVerifyAttempt = internalMutation({
-  args: { phone: v.string() },
-  handler: async (ctx, { phone }) => {
-    const rows = await ctx.db.query("otp_requests").withIndex("by_phone", (q) => q.eq("phone", phone)).collect();
-    const last = rows.sort((x, y) => y.created_ms - x.created_ms)[0];
-    if (!last) throw new Error("اطلب رمز تحقق أولاً");
-    if ((last.attempts ?? 0) >= VERIFY_MAX_ATTEMPTS) throw new Error("محاولات خاطئة كثيرة، اطلب رمزاً جديداً");
-    await ctx.db.patch(last._id, { attempts: (last.attempts ?? 0) + 1 });
-  },
-});
-
-// POST /api/auth/otp/request — Bird Verify sends an SMS code to the phone.
+// POST /api/auth/otp/request — generate a code and send it by SMS through Bird.
 export const requestOtp = action({
   args: { phone: v.string() },
   handler: async (ctx, { phone: raw }) => {
     const phone = raw.trim();
     if (!PHONE_RE.test(phone)) throw new Error("أدخل رقم هاتف صحيح مع رمز الدولة");
-    await ctx.runMutation(internal.edge.noteOtpRequest, { phone });
-    const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/verify/verifications`, {
+    const code = randomCode();
+    await ctx.runMutation(internal.edge.storeOtp, { phone, code_hash: await hashCode(phone, code) });
+    const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/sms/messages`, {
       method: "POST",
       headers: birdHeaders(),
-      body: JSON.stringify({ to: { phone_number: phone }, options: { code_length: 6, channels: ["sms"] } }),
+      body: JSON.stringify({ to: phone, text: `رمز التحقق في النظام الذكي: ${code}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.`, category: "authentication" }),
     });
     if (!r.ok) {
-      console.error("bird send failed", r.status, (await r.text()).slice(0, 300));
+      console.error("bird sms failed", r.status, (await r.text()).slice(0, 300));
       throw new Error(birdError(r.status));
     }
     return { ok: true };
   },
 });
 
-// POST /api/auth/otp/verify — Bird checks the code; on success we issue our own session.
+// POST /api/auth/otp/verify — check the code against the latest request; on success open a session.
 export const verifyOtp = action({
   args: { phone: v.string(), code: v.string() },
   handler: async (ctx, { phone: raw, code }): Promise<any> => {
     const phone = raw.trim();
-    if (!PHONE_RE.test(phone) || !/^\d{4,10}$/.test(code.trim())) throw new Error("رمز التحقق غير صحيح");
-    await ctx.runMutation(internal.edge.noteVerifyAttempt, { phone });
-    const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/verify/verifications/check`, {
-      method: "POST",
-      headers: birdHeaders(),
-      body: JSON.stringify({ to: { phone_number: phone }, code: code.trim() }),
-    });
-    const body: any = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      console.error("bird check failed", r.status, JSON.stringify(body).slice(0, 300));
-      throw new Error(r.status === 429 ? birdError(429) : "رمز التحقق غير صحيح أو منتهي");
-    }
-    if (body.success !== true) throw new Error(body.reason === "expired" ? "انتهت صلاحية الرمز، اطلب رمزاً جديداً" : "رمز التحقق غير صحيح");
+    if (!PHONE_RE.test(phone) || !/^\d{6}$/.test(code.trim())) throw new Error("رمز التحقق غير صحيح");
     const session_token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-    return await ctx.runMutation(internal.edge.createSession, { phone, session_token });
+    const res: any = await ctx.runMutation(internal.edge.checkOtp, { phone, code_hash: await hashCode(phone, code.trim()), session_token });
+    if (res.error) throw new Error(res.error);
+    return res;
   },
 });
 
-// Internal: find-or-create the user by verified phone and open a 30-day session.
-export const createSession = internalMutation({
-  args: { phone: v.string(), session_token: v.string() },
-  handler: async (ctx, { phone, session_token }) => {
+// Internal: attempt-limited code check; returns an error message (so the attempt count persists) or a session.
+export const checkOtp = internalMutation({
+  args: { phone: v.string(), code_hash: v.string(), session_token: v.string() },
+  handler: async (ctx, { phone, code_hash, session_token }): Promise<any> => {
+    const rows = await ctx.db.query("otp_requests").withIndex("by_phone", (q) => q.eq("phone", phone)).collect();
+    const last = rows.sort((x, y) => y.created_ms - x.created_ms)[0];
+    if (!last || !last.code_hash) return { error: "اطلب رمز تحقق أولاً" };
+    if ((last.attempts ?? 0) >= VERIFY_MAX_ATTEMPTS) return { error: "محاولات خاطئة كثيرة، اطلب رمزاً جديداً" };
+    if ((last.expires_ms ?? 0) < Date.now()) return { error: "انتهت صلاحية الرمز، اطلب رمزاً جديداً" };
+    if (last.code_hash !== code_hash) {
+      await ctx.db.patch(last._id, { attempts: (last.attempts ?? 0) + 1 });
+      return { error: "رمز التحقق غير صحيح" };
+    }
+    return await openSession(ctx, phone, session_token);
+  },
+});
+
+// Find-or-create the user by verified phone and open a 30-day session.
+async function openSession(ctx: any, phone: string, session_token: string) {
+  {
+    // (block kept for indentation parity with the former mutation handler)
     // Developer accounts come ONLY from the Convex deployment env var DEVELOPER_PHONES.
     const devPhones = (process.env.DEVELOPER_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean);
     const isDev = devPhones.includes(phone);
-    const existing = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", phone)).unique();
+    const existing = await ctx.db.query("users").withIndex("by_phone", (q: any) => q.eq("phone", phone)).unique();
     let user_id: string;
     if (existing) {
       user_id = existing.user_id;
@@ -106,14 +119,14 @@ export const createSession = internalMutation({
       await ctx.db.insert("users", { user_id, phone, email: phone, name: null, picture: null, role: isDev ? "DEVELOPER" : null, employee_type: null, org_id: null, consent_at: null, created_at: nowIso() });
     }
     // Used OTP rows are no longer needed.
-    for (const o of await ctx.db.query("otp_requests").withIndex("by_phone", (q) => q.eq("phone", phone)).collect()) await ctx.db.delete(o._id);
+    for (const o of await ctx.db.query("otp_requests").withIndex("by_phone", (q: any) => q.eq("phone", phone)).collect()) await ctx.db.delete(o._id);
     await ctx.db.insert("user_sessions", { session_token, user_id, expires_at: new Date(Date.now() + 30 * 86400000).toISOString(), created_at: nowIso() });
-    const user: any = await ctx.db.query("users").withIndex("by_user_id", (q) => q.eq("user_id", user_id)).unique();
+    const user: any = await ctx.db.query("users").withIndex("by_user_id", (q: any) => q.eq("user_id", user_id)).unique();
     const out: any = { ...clean(user), org: null };
     if (user.org_id) out.org = clean(await orgById(ctx, user.org_id));
     return { session_token, user: out };
-  },
-});
+  }
+}
 
 // POST /api/auth/name — new phone accounts set their display name once.
 export const setName = mutation({

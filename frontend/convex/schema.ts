@@ -32,6 +32,8 @@ export default defineSchema(
       phone: v.string(),
       created_ms: v.number(),
       attempts: v.optional(v.number()),
+      code_hash: v.optional(v.string()),
+      expires_ms: v.optional(v.number()),
     }).index("by_phone", ["phone"]),
 
     user_sessions: defineTable({

@@ -251,5 +251,7 @@ write-through bridge is now unused and can be removed.
 - Security: removed public auth:syncSession (anyone could mint sessions/roles) + ConvexSessionSync.
 - Data: all previous accounts/data wiped per user (backup: /app/backups/convex_before_phone_login.zip).
 - Testing: iteration_15 — 21/21 backend, frontend OK.
-- BLOCKER (external): Bird key bk_eu1_GaOg… still returns 403 "requires verify:write" → user must add
-  scope `verify` level `write` (Platform tools → API keys). Update via `npx convex env set BIRD_API_KEY`.
+- UPDATE: Bird key has no `verify` scope but has `sms:write` → switched to self-managed OTP over Bird SMS API
+  (POST /v1/sms/messages, category "authentication"). 6-digit code from crypto.getRandomValues, stored only as
+  sha256(OTP_PEPPER:phone:code) in otp_requests, 10-min expiry, 5 attempts, 30s resend cooldown, 5 sends/hour.
+  Convex env OTP_PEPPER added. Verified Bird accepts the key (422 on invalid recipient, not 403).
