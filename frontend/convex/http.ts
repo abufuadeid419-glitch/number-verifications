@@ -13,7 +13,9 @@ const spread = (c: any) => ({ token: c.token, ...c.b });
 // Full REST surface, served from Convex. Order matters: static sub-paths before :param ones.
 const ROUTES: Route[] = [
   // auth
-  ["POST", "/auth/session", "a", api.edge.exchangeSession, (c) => ({ session_id: c.b.session_id })],
+  ["POST", "/auth/otp/request", "a", api.edge.requestOtp, (c) => ({ phone: String(c.b.phone ?? "") })],
+  ["POST", "/auth/otp/verify", "a", api.edge.verifyOtp, (c) => ({ phone: String(c.b.phone ?? ""), code: String(c.b.code ?? "") })],
+  ["POST", "/auth/name", "m", api.edge.setName, (c) => ({ token: c.token, name: String(c.b.name ?? "") })],
   ["GET", "/auth/me", "q", api.extra.me, T],
   ["POST", "/auth/logout", "m", api.extra.logout, T],
   ["POST", "/auth/consent", "m", api.extra.consent, T],

@@ -239,3 +239,17 @@ write-through bridge is now unused and can be removed.
   src/components/SalesTargets.tsx (owner/acct card with edit sheet; agent "هدفي" card with daily pace);
   REST GET/PUT /api/targets; agent notified on new target.
 - Testing: iteration_14 — 20/20 backend, frontend verified (trial banner TRIAL path by code review).
+
+## Auth switch (2026-06): phone number + SMS OTP via Bird Verify (Google removed)
+- convex/edge.ts: requestOtp / verifyOtp actions (Bird eu1 /v1/verify/verifications[/check]), per-phone rate
+  limit (5 sends/hour), 5 verify attempts per code, internal createSession (30-day token), setName,
+  internal seedTestAccounts (CLI-only). Routes: POST /auth/otp/request, /auth/otp/verify, /auth/name.
+- Secrets in Convex env: BIRD_API_KEY, BIRD_BASE_URL, DEVELOPER_PHONES (+963 dev phone). Not in code.
+- Users: `phone` field + by_phone index; `email` holds phone as display id. otp_requests table.
+- Frontend: app/login.tsx PhoneAuth (phone → code → name), default +963; src/auth.tsx requestOtp/verifyOtp/saveName;
+  homeFor routes users without a name to /login.
+- Security: removed public auth:syncSession (anyone could mint sessions/roles) + ConvexSessionSync.
+- Data: all previous accounts/data wiped per user (backup: /app/backups/convex_before_phone_login.zip).
+- Testing: iteration_15 — 21/21 backend, frontend OK.
+- BLOCKER (external): Bird key bk_eu1_GaOg… still returns 403 "requires verify:write" → user must add
+  scope `verify` level `write` (Platform tools → API keys). Update via `npx convex env set BIRD_API_KEY`.

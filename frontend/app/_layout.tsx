@@ -9,7 +9,6 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { homeFor, useAuth, AuthProvider } from "@/src/auth";
 import { ErrorBoundary } from "@/src/components/error-boundary";
-import { ConvexSessionSync } from "@/src/components/ConvexSessionSync";
 import { convex } from "@/src/convex";
 import { queryClient } from "@/src/query-client";
 import { useTheme } from "@/src/theme";
@@ -80,7 +79,6 @@ export default function RootLayout() {
                 <UpdateGate>
                   <Gate />
                 </UpdateGate>
-                <ConvexSessionSync />
                 <BtPrintHost />
               </ToastProvider>
             </AuthProvider>

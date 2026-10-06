@@ -13,6 +13,7 @@ export default defineSchema(
     users: defineTable({
       user_id: v.string(),
       email: v.string(),
+      phone: v.optional(v.string()),
       name: v.optional(v.union(v.string(), v.null())),
       picture: v.optional(v.union(v.string(), v.null())),
       role: v.optional(v.union(v.string(), v.null())),
@@ -24,7 +25,14 @@ export default defineSchema(
     })
       .index("by_user_id", ["user_id"])
       .index("by_email", ["email"])
+      .index("by_phone", ["phone"])
       .index("by_org", ["org_id"]),
+
+    otp_requests: defineTable({
+      phone: v.string(),
+      created_ms: v.number(),
+      attempts: v.optional(v.number()),
+    }).index("by_phone", ["phone"]),
 
     user_sessions: defineTable({
       session_token: v.string(),

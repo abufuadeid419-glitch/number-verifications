@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 15 — Full coverage of the phone + Bird SMS OTP auth switch against Convex deployment fearless-ostrich-878. Backend: 21/21 pytest cases pass in test_iteration15_phone_auth.py. Verified: (a) POST /auth/otp/request — '12' and '0999' → 400 'أدخل رقم هاتف صحيح مع رمز الدولة'; valid E.164 (+963900000111) → 400 'تعذر إرسال رمز التحقق، حاول لاحقاً' (expected Bird verify:write scope issue, external); 6th send to +963900000777 within an hour → 400 'تم تجاوز عدد مرات الإرسال، حاول بعد ساعة'. (b) POST /auth/otp/verify — code 'abc' → 400 'رمز التحقق غير صحيح'; invalid phone format → 400; verify without a prior /otp/request for +963900000999 → 400 'اطلب رمز تحقق أولاً'; 6 bad verifies against +963900000778 after priming → 400 'محاولات خاطئة كثيرة، اطلب رمزاً جديداً'. (c) POST /auth/name — '' and 'A' → 400 'أدخل اسماً صحيحاً'; valid 'اختبار الاسم' sets owner name (verified by GET /auth/me), then restored to 'مالك الاختبار'. (d) POST /auth/session → 404 'غير موجود' (Google route is gone). (e) Convex direct mutation POST https://fearless-ostrich-878.eu-west-1.convex.cloud/api/mutation for paths {auth:syncSession, edge:createSession, edge:seedTestAccounts, edge:noteOtpRequest, edge:noteVerifyAttempt} — all return 'Could not find public function' (correctly internal). (f) GET /auth/me with seeded bearers test_token_{dev,owner,acct,agent} all 200 with the expected phone (+9639000000{1..4}) + name + role (DEVELOPER/OWNER/EMPLOYEE/EMPLOYEE). Frontend web preview (390×844): /login renders login-screen → phone-step with login-country-code-input default='+963' (verified exact), login-phone-input accepts digits only, login-send-code-button disabled while <6 digits (aria-disabled=true at 0 and 3 digits), enabled at 9 digits (aria-disabled=None); pressing shows login-error 'تعذر إرسال رمز التحقق، حاول لاحقاً' as expected. Zero Google buttons found. Seeded bearer login via localStorage round-trip works for all 4 roles: owner → /owner, acct → /acct, agent → /dist, dev → /dev, each with sync-status-badge visible and no 'Unmatched Route'/red screen. /reports and /agents-map load for owner (agents-map shows '1 موزع · يُحدَث فورياً عند تسجيل موقع أو بيع جديد' confirming the live-Convex path with no syncSession). sales-targets-card renders on owner home. Code-step + name-step are verified by code review (app/login.tsx lines 86-125 — testIDs code-step/login-code-input/login-verify-button/login-resend-button and name-step/login-name-input/login-name-submit present; src/auth.tsx homeFor returns 'login' when user && !user.name, so first-time phone accounts are correctly routed to the name step).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_phone_auth.py (NEW, 21/21 pass)",
+    "/app/test_reports/pytest/iteration15.xml"
+  ],
+  "action_items": [
+    "NON-BLOCKING (external): Bird API key is missing verify:write scope so real OTP sends return 400 'تعذر إرسال رمز التحقق' — code is correct, user must grant the scope on bird.com or rotate the key in Convex env BIRD_API_KEY to end-to-end test real SMS delivery."
+  ],
+  "critical_code_review_comments": [
+    "convex/edge.ts PHONE_RE=/^\\+[1-9]\\d{7,14}$/ correctly rejects '12' and '0999' (no + / wrong length). noteOtpRequest cleans rows older than 1h BEFORE counting, so the rolling-hour window is honored; OTP_MAX_PER_HOUR=5 (6th request blocked). noteVerifyAttempt errors with 'اطلب رمز تحقق أولاً' when no prior row and blocks after VERIFY_MAX_ATTEMPTS=5 — both strings match the review spec exactly.",
+    "convex/edge.ts createSession is internalMutation (not callable via /api/mutation) and resolves developer phones ONLY from process.env.DEVELOPER_PHONES — no code-based developer whitelist, matches the user requirement.",
+    "convex/edge.ts setName enforces 2..60 trimmed chars — 'A' and '  ' both rejected with 'أدخل اسماً صحيحاً'.",
+    "convex/http.ts has no /auth/session route (Google removed), returns 404 'غير موجود' via final json(404). CORS + statusFor map 'اطلب رمز تحقق أولاً' / 'تم تجاوز عدد مرات الإرسال' / 'محاولات خاطئة كثيرة' to 400 which matches test expectations.",
+    "src/auth.tsx no longer references Google token/syncSession; AuthProvider surface is {requestOtp, verifyOtp, saveName, logout, refresh}. homeFor sends user && !user.name to 'login' so the name-step is reachable; TOKEN_KEY='session_token' is consistent with the localStorage web-preview bootstrap pattern.",
+    "app/login.tsx DEFAULT_CC='+963', RESEND_SECONDS=60, send button disabled until local>=6 digits, 'إعادة الإرسال (n)' countdown wired via useEffect — all per spec. terms text + login-error element present. Zero Google button in JSX.",
+    "convex/edge.ts seedTestAccounts is internalMutation ⇒ not callable via public /api/mutation (confirmed 'Could not find public function')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15_phone_auth.py (NEW)",
+    "/app/test_reports/iteration_15.json (NEW)",
+    "/app/test_reports/pytest/iteration15.xml (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% — 21/21 iteration-15 tests pass",
+    "frontend": "100% — login phone-step validation + Bird error path, no Google button, and all 4 seeded-role homes + /reports + /agents-map load with sync-status-badge"
+  },
+  "seed_data_creation": "Only otp_requests rows for test phones +963900000777 (rate-limit) and +963900000778 (brute-force) — rows self-expire after 1h via noteOtpRequest cleanup. Owner name transiently changed to 'اختبار الاسم' then restored to 'مالك الاختبار'. No orgs/users/sessions created or deleted. Real developer phone never contacted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phone+OTP auth path is complete and stable. Only external blocker is Bird API key scope (verify:write) which prevents real SMS end-to-end. If/when scope is granted, extend test_iteration15_phone_auth.py with a happy-path test that intercepts the SMS code (e.g., Bird sandbox). The 4 seeded bearer tokens remain the only automation entrypoint for authenticated flows. Avoid sending OTP to any +963 number other than the 777/778 test fakes.",
+  "rca_of_issue": "No bugs found. Previous iterations had a Google-based auth which has been fully removed; the removal is complete (no /auth/session route, no Google button, no public syncSession, no code-based developer whitelist)."
+}

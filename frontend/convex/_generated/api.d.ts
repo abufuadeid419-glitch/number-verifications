@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as auth from "../auth.js";
 import type * as bridge from "../bridge.js";
 import type * as collections from "../collections.js";
 import type * as crons from "../crons.js";
@@ -38,7 +37,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  auth: typeof auth;
   bridge: typeof bridge;
   collections: typeof collections;
   crons: typeof crons;

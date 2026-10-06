@@ -90,3 +90,4 @@ credentials.json
 # keep the distributor route group (not a build output)
 !frontend/app/dist/
 !frontend/app/dist/**
+backups/

@@ -1,6 +1,6 @@
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -30,30 +30,8 @@ export default function AgentsMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const syncSession = useMutation(cxApi.auth.syncSession);
-  const [ready, setReady] = useState(false);
-  const synced = useRef(false);
+  const ready = true;
   const [tab, setTab] = useState<"map" | "routes">("map");
-
-  useEffect(() => {
-    if (!token || !user || synced.current) return;
-    synced.current = true;
-    syncSession({
-      token,
-      user: {
-        user_id: user.user_id,
-        email: user.email,
-        name: user.name ?? null,
-        picture: user.picture ?? null,
-        role: user.role ?? null,
-        employee_type: user.employee_type ?? null,
-        org_id: user.org_id ?? null,
-      },
-      org: user.org ?? null,
-    })
-      .then(() => setReady(true))
-      .catch((e: any) => toast(e.message ?? "فشل مزامنة الجلسة", "error"));
-  }, [token, user, syncSession, toast]);
 
   const arg = ready && token ? { token } : "skip";
   const agents = useQuery(cxApi.tracking.agents, arg);
