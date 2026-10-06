@@ -46,7 +46,15 @@ export const storeOtp = internalMutation({
     if (recent.length >= OTP_MAX_PER_HOUR) throw new Error("تم تجاوز عدد مرات الإرسال، حاول بعد ساعة");
     const last = recent.sort((x, y) => y.created_ms - x.created_ms)[0];
     if (last && Date.now() - last.created_ms < 30000) throw new Error("انتظر قليلاً قبل طلب رمز جديد");
-    await ctx.db.insert("otp_requests", { phone, created_ms: Date.now(), attempts: 0, code_hash, expires_ms: Date.now() + OTP_TTL_MS });
+    return await ctx.db.insert("otp_requests", { phone, created_ms: Date.now(), attempts: 0, code_hash, expires_ms: Date.now() + OTP_TTL_MS });
+  },
+});
+
+// Internal: a send that Bird rejected must not count toward cooldown / hourly limit.
+export const dropOtp = internalMutation({
+  args: { id: v.id("otp_requests") },
+  handler: async (ctx, { id }) => {
+    if (await ctx.db.get(id)) await ctx.db.delete(id);
   },
 });
 
@@ -57,14 +65,17 @@ export const requestOtp = action({
     const phone = raw.trim();
     if (!PHONE_RE.test(phone)) throw new Error("أدخل رقم هاتف صحيح مع رمز الدولة");
     const code = randomCode();
-    await ctx.runMutation(internal.edge.storeOtp, { phone, code_hash: await hashCode(phone, code) });
+    const otpId = await ctx.runMutation(internal.edge.storeOtp, { phone, code_hash: await hashCode(phone, code) });
     const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/sms/messages`, {
       method: "POST",
       headers: birdHeaders(),
       body: JSON.stringify({ to: phone, text: `رمز التحقق في النظام الذكي: ${code}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.`, category: "authentication" }),
     });
     if (!r.ok) {
-      console.error("bird sms failed", r.status, (await r.text()).slice(0, 300));
+      const body = await r.text();
+      console.error("bird sms failed", r.status, body.slice(0, 300));
+      await ctx.runMutation(internal.edge.dropOtp, { id: otpId });
+      if (body.includes("E12020")) throw new Error("إرسال الرسائل إلى هذه الدولة غير مفعّل حالياً، تواصل مع الدعم");
       throw new Error(birdError(r.status));
     }
     return { ok: true };

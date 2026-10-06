@@ -255,3 +255,5 @@ write-through bridge is now unused and can be removed.
   (POST /v1/sms/messages, category "authentication"). 6-digit code from crypto.getRandomValues, stored only as
   sha256(OTP_PEPPER:phone:code) in otp_requests, 10-min expiry, 5 attempts, 30s resend cooldown, 5 sends/hour.
   Convex env OTP_PEPPER added. Verified Bird accepts the key (422 on invalid recipient, not 403).
+
+- FIX (2026-06): SMS failed with Bird E12020 SMSDestinationNotEnabled (Syria not enabled in Bird workspace). Failed sends now dropped (no cooldown/limit consumed), clear Arabic error; login strips duplicated country code / 00 prefix.

@@ -71,7 +71,10 @@ function PhoneAuth() {
     return () => clearTimeout(t);
   }, [wait]);
 
-  const phone = `+${cc.replace(/\D/g, "")}${local.replace(/\D/g, "").replace(/^0+/, "")}`;
+  const ccDigits = cc.replace(/\D/g, "");
+  // Accept "0947…", "947…", "963947…" or "00963947…" in the local field.
+  const localDigits = local.replace(/\D/g, "").replace(/^00/, "").replace(new RegExp(`^${ccDigits}(?=\\d{7,})`), "").replace(/^0+/, "");
+  const phone = `+${ccDigits}${localDigits}`;
   const send = async () => {
     if (await requestOtp(phone)) {
       setSentTo(phone);
