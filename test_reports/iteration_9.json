@@ -1,0 +1,29 @@
+{
+  "summary": "Verified bug fix: distributor (FIELD_AGENT) route group /dist is now resolved. Previously logging in as agent showed 'Unmatched Route — Page could not be found'; now /dist renders the distributor home with 4 bottom tabs: الرئيسية / فاتورة / العملاء / العمليات. All 4 distributor screens render without 'Unmatched Route' and show expected empty states for the fresh seeded agent (سامر). Backend agent endpoints all return 200. Owner / Accountant / Developer role homes also render without regression. GuidedTour overlay appears as expected and is dismissable via 'تخطي الجولة'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/ (not re-run; per context note backend was already 198/198 and scope was only agent endpoints + route fix)",
+    "Manual curls of 9 agent endpoints: all 200 (stats/overview, my/inventory, customers, collections, sales, payment-vouchers, sales-returns, warehouse-returns, routes/mine)"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "app/dist/*.tsx files are thin re-exports of /src/screens/* — same pattern as other role groups (owner/acct/dev), consistent and correct.",
+    "app/dist/_layout.tsx uses the shared RoleTabs with tourKey='dist' and tabBarButtonTestID='tab-<name>' from RoleTabs — testable via data-testid='tab-index|sale|customers|ops' as verified."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% — 9/9 field-agent endpoints return 200 with test_token_agent",
+    "frontend": "100% — /dist, /dist/sale, /dist/customers, /dist/ops all render; 4 tabs visible and switchable; no Unmatched Route on agent/owner/acct/dev homes"
+  },
+  "seed_data_creation": "Re-ran /app/backend/seed_test.py (prints 'seeded'): recreates org_test_1 + 6 users/sessions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Distributor route group lives at /app/frontend/app/dist/{_layout,index,sale,customers,ops}.tsx. For browser automation: visit host once, run `window.localStorage.setItem('session_token', JSON.stringify('<token>'))`, then navigate to the role home. Tabs expose data-testid='tab-index|sale|customers|ops'. GuidedTour overlay must be dismissed via 'تخطي الجولة' (text selector) before interacting with tab bar on fresh profiles. Expected empty states for seeded agent: 'لا يوجد مخزون لديك', 'لا يوجد عملاء بعد. أضف أول عميل', 'لا يوجد خط سير مخطط لليوم', 'لا توجد عمليات بعد'.",
+  "rca_of_issue": "RCA (resolved by main agent): homeFor() in src/auth.tsx redirects EMPLOYEE+FIELD_AGENT to '/dist', but the app/dist/ route group had never been added to the repo, so expo-router returned the default +not-found screen ('Unmatched Route'). Fix: added app/dist/_layout.tsx (RoleTabs with 4 tabs) + app/dist/{index,sale,customers,ops}.tsx (thin re-exports of existing /src/screens/{Overview,NewSale,Customers,DistributorOps}). Verified: /dist and all 4 nested tabs render; no 'Unmatched Route' on any role home; backend endpoints used by these screens all 200."
+}

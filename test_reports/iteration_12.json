@@ -1,0 +1,59 @@
+{
+  "summary": "Both backend and frontend tested against the fully-cloned Convex app (deployment fearless-ostrich-878). Backend regression on Convex REST .site surface = 63/63 pass (test_iteration11_convex_rest.py), and a NEW security suite = 11/11 pass (test_iteration12_security.py) confirming edge:createSession, migrate:* and bridge:* are NOT publicly callable on the Convex /api/mutation endpoint while the public OAuth action edge:exchangeSession and public queries remain reachable. FastAPI stub /api/health returns {ok:true} and / returns backend=convex, mongodb=false. Frontend web preview: login screen renders correctly. localStorage session_token injection: OWNER -> /owner renders live Convex KPIs (sales 2,409 / collections 200 / debts 2,076 etc, leaderboard, debt list), ACCOUNTANT (test_token_acct) -> /acct renders accountant dashboard, DEVELOPER (test_token_dev) -> /dev renders developer console with live Convex data. ONE CRITICAL ROUTING BUG: FIELD_AGENT (test_token_agent / test_token_agent2) is redirected to /dist which renders 'Unmatched Route - Page could not be found' because the entire app/dist/ Expo Router group is MISSING from the repository (homeFor() in src/auth.tsx:178 returns 'dist' for field agents but there is no app/dist/_layout.tsx). This is the exact same regression previously fixed in iteration 9 (see PRD.md lines 61-68) and was lost in the recent repo clone/Convex-restore. Fix is to re-add app/dist/_layout.tsx (RoleTabs with 4 tabs: index/sale/customers/ops) mirroring app/owner/_layout.tsx. All backend data and auth are healthy; only the field-agent route group needs to be re-added by the main agent.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/dist/ (Expo Router group)",
+        "issue": "Entire /dist route group is missing. Field agent login (test_token_agent, test_token_agent2) redirects via homeFor() to /dist -> 'Unmatched Route - Page could not be found'. src/auth.tsx:178 returns 'dist' for EMPLOYEE+FIELD_AGENT but /app/frontend/app/dist/ does not exist. PRD.md iteration 9 previously fixed this by adding app/dist/_layout.tsx (RoleTabs, 4 tabs: index->Overview, sale->NewSale, customers->Customers, ops->DistributorOps) — the fix was lost in the clone/restore.",
+        "testID": "n/a (route-level)",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Login as FIELD_AGENT via localStorage session_token",
+        "issue": "Session is valid, /api/auth/me returns 200 (role=EMPLOYEE, employee_type=FIELD_AGENT), but UI shows Unmatched Route due to missing app/dist/ route group.",
+        "affected_testIDs": ["role-home-dist"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "<Image> style.resizeMode",
+        "issue": "Console warning on every reload: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' Appears when login/role screens render. Non-blocking but should be migrated to resizeMode prop."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_convex_rest.py (63/63 pass, re-run this iteration)",
+    "/app/backend/tests/test_iteration12_security.py (NEW, 11/11 pass — verifies edge:createSession, migrate:*, bridge:* are not public)",
+    "/app/test_reports/pytest/iteration12.xml",
+    "/app/test_reports/pytest/iteration12_security.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Re-add /app/frontend/app/dist/_layout.tsx (Expo Router group for field agents). Use the same RoleTabs pattern as app/owner/_layout.tsx and app/acct/_layout.tsx. 4 tabs expected: index->Overview, sale->NewSale, customers->Customers, ops->DistributorOps (per PRD iteration 9). After adding, re-verify field-agent login (test_token_agent) shows the distributor tabs instead of Unmatched Route.",
+    "NON-BLOCKING: Migrate <Image> resizeMode from style to props (RN deprecation warning on every page).",
+    "NON-BLOCKING: /app/backend/requirements.txt still pins motor/pymongo even though server.py has no Mongo imports (noted previously). Safe to drop."
+  ],
+  "critical_code_review_comments": [
+    "src/api.ts correctly uses process.env.EXPO_PUBLIC_CONVEX_SITE_URL (no hardcoded URL). Error handling and 401 handler are wired. Good.",
+    "src/auth.tsx::homeFor returns 'dist' for FIELD_AGENT but the route group was not restored during the clone; must be fixed before shipping. The three other role targets ('owner', 'acct', 'dev') all have corresponding app/ directories and render correctly.",
+    "convex/http.ts routing and role gates behave identically to the previous FastAPI stack: 401 Arabic {detail} on bad token, 403 on cross-role, 404 on unknown paths, CORS preflight 204 on both static and dynamic routes.",
+    "Developer email is no longer in the codebase (set via Convex env DEVELOPER_EMAILS as requested). test_token_dev resolves to role=DEVELOPER from Convex session row only.",
+    "Security: Convex /api/mutation POSTs for edge:createSession, migrate:importUsers/importOrgs/importAll/run/verify and bridge:upsert/insertRow/removeByKey all return 'Could not find public function' as expected. Public action edge:exchangeSession and public queries still resolve. Good lockdown."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_security.py (NEW)",
+    "/app/test_reports/iteration_12.json (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% — 63/63 REST regression + 11/11 security = 74/74",
+    "frontend": "75% — 3 of 4 role home screens render (OWNER/ACCT/DEV); FIELD_AGENT broken by missing /dist route group"
+  },
+  "seed_data_creation": "No new seed. Reused existing seeded tokens from /app/memory/test_credentials.md (test_token_owner/agent/agent2/acct/dev). Write-chain tests create TEST_-prefixed products/customers/routes/invites and are cleaned up by autouse session fixture.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After main agent restores /app/frontend/app/dist/_layout.tsx: (1) run `sudo supervisorctl restart expo`, (2) in a mobile viewport (390x844) open the preview URL, set localStorage.session_token = JSON.stringify('test_token_agent'), navigate to /, and confirm it lands on /dist with 4 tabs (الرئيسية / بيع جديد / العملاء / العمليات) and no 'Unmatched Route'. Also sanity check /dist/sale (NewSale) and /dist/customers screens render. Backend suites (test_iteration11_convex_rest.py and test_iteration12_security.py) can be re-run as-is — 74 tests, no changes needed.",
+  "rca_of_issue": "FIELD_AGENT Unmatched Route — ROOT CAUSE: `src/auth.tsx::homeFor` returns the string 'dist' for role=EMPLOYEE / employee_type=FIELD_AGENT (line 178), and app/_layout.tsx issues `router.replace('/dist')` on auth. Expo Router then looks up `app/dist/_layout.tsx` or `app/dist/index.tsx` — neither exists after the latest clone/restore (`ls /app/frontend/app/` shows acct, dev, owner but NOT dist), so the +not-found screen renders. The identical bug was previously reported and fixed in iteration 9 (PRD.md:61-68) by committing an `app/dist/_layout.tsx` with a RoleTabs group of 4 tabs; that commit was lost during the Convex-era repo clone. REPRO: set localStorage session_token to 'test_token_agent' and reload preview. MITIGATION: re-add app/dist/_layout.tsx mirroring the owner/acct layouts; the underlying DistributorOps / NewSale / Customers / Overview screens still exist under src/screens/ and are wired, only the route container is missing."
+}

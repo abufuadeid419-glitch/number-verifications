@@ -1,0 +1,37 @@
+{
+  "summary": "Backend-only testing of the restored Smart System clone. Verified: (1) backend serves on :8001 — GET /api/ -> 200 {'message':'Smart System API'}; (2) seeded fixtures via /app/backend/seed_test.py (org_test_1 + 6 users with deterministic bearer tokens from /app/memory/test_credentials.md); (3) ran the shipped pytest suite SERIALLY as instructed (`cd /app/backend && EXPO_PUBLIC_BACKEND_URL=http://localhost:8001 /root/.venv/bin/python -m pytest tests/ -n 0 -q`) -> 198 passed in 1.44s (iter2 39 + iter3 44 + iter4 47 + iter5 17 + iter6 9 + iter7 42), JUnit at /app/test_reports/pytest/iteration8.xml. Did NOT modify pytest.ini (addopts kept at -n 2 --dist loadscope); passed -n 0 on the CLI as the context note required — this is critical because the suite shares cross-class module-level state (e.g. S['cid']) and ~79 tests fail with KeyError under xdist workers. (4) Direct role-based auth gating spot-check against /api/auth/me and sample resources: no-token -> 401, bad-token -> 401, test_token_new (no role) -> 200 on /api/auth/me but 403 on /api/products (correct — no org/role), test_token_dev -> 200 on /api/dev/licenses & /api/dev/orgs (and the suite also covers /api/dev/plans POST/PUT; GET /api/dev/plans returning 405 is by design, there is no GET collection endpoint), test_token_owner -> 200 on /api/stats/overview & /api/stats/leaderboard, test_token_agent -> 200 on GET /api/products but 403 on POST /api/products and 403 on /api/dev/licenses, test_token_acct -> 403 on POST /api/customers (customers-create is FIELD_AGENT-only per iter7 rules). Core flows (products CRUD, deliveries, sales, collections, sales-returns, routes incl. optimize, customer-types/price lists, upgrade-requests, dev licenses/plans/orgs, stats/overview+leaderboard, payment-vouchers, warehouse-returns, trail, stale debtors) are all exercised by the 198-test suite that passed. No regressions versus iteration_7. No code changes made.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/test_iteration3.py",
+    "/app/backend/tests/test_iteration4.py",
+    "/app/backend/tests/test_iteration5.py",
+    "/app/backend/tests/test_iteration6.py",
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iteration8.xml"
+  ],
+  "action_items": [
+    "None required — backend restore is clean. Carryover (nice-to-have, not blocking): (a) /api/customers/{id}/reminded stores last_reminder_by=null when caller user lacks 'name' (cosmetic). (b) DocActions receipt-whatsapp-button still opens wa.me/?text=… when phone is missing — align with Customers.tsx guard (toast + no-op). Both inherited from iteration_7's open list; not re-verified this iteration (backend-only scope)."
+  ],
+  "critical_code_review_comments": [
+    "pytest.ini intentionally parallelizes with xdist (-n 2 --dist loadscope). The shipped suite assumes module-level shared dict state (e.g. S['cid']) that WORKS under loadscope only because each class/module is pinned to one worker — but any new test added at the top level across modules could race. Consider migrating shared state to pytest fixtures to make the suite xdist-safe regardless of distribution strategy.",
+    "/api/auth/me returns 200 with role=null for test_token_new. Any client-side route guard must therefore check role, not just 200. The suite confirms protected endpoints (e.g. /api/products) correctly 403 when role is missing.",
+    "GET /api/dev/plans returns 405 (no GET collection route). If the frontend lists plans anywhere, confirm it uses the correct endpoint (likely /api/dev/plans is POST-only for create; listing may be via /api/dev/orgs or a dedicated endpoint). Not a bug, just worth noting for FE wiring."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% — 198/198 pass serially", "frontend": "not tested (backend-only scope per review request)"},
+  "seed_data_creation": "Re-ran /app/backend/seed_test.py: upserts organizations/org_test_1 + 6 users + 6 sessions (test_token_dev/owner/agent/agent2/acct/new). Test-created rows (TEST_IT*/pay-idem-fixed-7/etc.) are purged by conftest.py.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ALWAYS run the suite serially: `cd /app/backend && EXPO_PUBLIC_BACKEND_URL=http://localhost:8001 /root/.venv/bin/python -m pytest tests/ -n 0 -q --junitxml=/app/test_reports/pytest/<name>.xml`. Do NOT touch pytest.ini (addopts has -n 2 --dist loadscope by design per the context note). The suite requires seed data; re-run /app/backend/seed_test.py if sessions were purged. Correct auth endpoint is /api/auth/me (returns 401 for missing/invalid token). Role gating cheatsheet (verified): new -> 403 on /api/products; agent -> 200 GET /api/products, 403 POST /api/products, 403 /api/dev/*; acct -> 403 POST /api/customers (FIELD_AGENT only); owner -> 200 on /api/stats/overview+leaderboard; dev -> 200 on /api/dev/licenses+orgs (GET /api/dev/plans -> 405 by design).",
+  "rca_of_issue": "N/A — no new bugs this iteration. Previous iter7 RCA (/api/routes/{rid}/optimize 500 due to _build_stops arity mismatch) remains fixed; iter3 TestE_Routes cases still pass as part of the 198."
+}

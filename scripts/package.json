@@ -1,0 +1,14 @@
+{
+  "name": "smart-system-migration",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-shot MongoDB -> Convex data migration for Smart System",
+  "scripts": {
+    "migrate": "node migrate_mongo_to_convex.mjs"
+  },
+  "dependencies": {
+    "convex": "^1.46.0",
+    "mongodb": "^6.9.0"
+  }
+}

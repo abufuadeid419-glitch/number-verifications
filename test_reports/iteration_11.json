@@ -1,0 +1,37 @@
+{
+  "summary": "Full MongoDB -> Convex cutover regression (backend only). 63/63 tests pass in /app/backend/tests/test_iteration11_convex_rest.py. Verified: FastAPI stub on :8001 returns {backend:convex, mongodb:false} and server.py has no motor/pymongo imports; Convex .site REST surface auth works for owner/agent/dev; bad/missing tokens -> 401 Arabic {detail}; role gates (agent->dev-only 403, owner->sales POST 403, agent->/employees 403, agent->/stats/alerts|finance|reports 403, unknown path 404); CORS OPTIONS preflight on both static and :param routes -> 204 with Access-Control-Allow-Origin:*; all 22 documented owner reads return 200 JSON (products, customers, sales, collections, stats/{overview,alerts,finance,reports,leaderboard}, notifications, org/profile, plans, settings/payment, routes, tracking/agents, employees, deliveries, inventory/distributors, purchases, payment-vouchers, stock-movements, price-history); public /app-version/latest 200 with no token; write transactions chain end-to-end asserting on returned ids: owner POST /products -> appears in /products -> POST /purchases (stock +10, cost_price updated to 600) -> appears in /purchases -> POST /deliveries to agent -> appears in /deliveries -> agent POST /deliveries/:id/confirm (inventory loaded) -> POST /sales (inventory decrements by 1) -> POST /collections (succeeds against sale's credit balance); owner POST /routes (using existing org customer; owner cannot create customers which is the correct agent-only gate) -> appears in /routes?date=; owner POST /employees/invite -> returns EMP- prefixed code; dev GET /dev/{stats,orgs,monitoring,licenses,versions} all 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_convex_rest.py (63 tests, 63 passed)",
+    "/app/test_reports/pytest/iteration11.xml"
+  ],
+  "action_items": [
+    "Housekeeping (non-blocking): /app/backend/requirements.txt still pins motor==3.3.1 and pymongo==4.6.3 even though server.py never imports them. Safe to remove for a cleaner cutover.",
+    "Doc nit (non-blocking): /app/memory/test_credentials.md still mentions seed_test.py writing to Mongo (`seeds into Mongo (legacy)`). Since the Mongo path is retired, consider updating the doc to describe only the Convex auth:syncSession path for test token sync."
+  ],
+  "critical_code_review_comments": [
+    "convex/http.ts handler is tight: dynamic :param routes get CORS from the shared CORS object, OPTIONS short-circuits to 204 for every /api/* path (verified against /api/sales/<id>/void), and Arabic error strings are mapped to HTTP codes via statusFor() (401/403/404/400) — matches the previous FastAPI behavior.",
+    "convex/products.ts::create uses `cost_price`/`sale_price` (not `cost`/`price` or `sku`) and strictly rejects extra fields via arg validator — frontend clients must send the right shape. Not a bug, just a schema contract to watch during the Expo UI migration.",
+    "Field agents are correctly gated out of staff-only stats endpoints (/stats/alerts, /stats/finance, /stats/reports) and /employees; /stats/overview, /stats/agents and /stats/leaderboard are intentionally ANY_ORG and return the agent's own slice via by_distributor indexes. The problem statement's phrasing 'STAFF-only /api/stats/*' is slightly broader than the code; the code's narrower gate is the intended design.",
+    "Owner is correctly NOT allowed to POST /customers — that route is AGENT-only (Arabic 'ليس لديك صلاحية'). Any UI that lets an owner add customers from the field will 403; routes/customer-import flows must stay agent-driven. This matches the pre-migration behavior.",
+    "FastAPI server.py is a 30-line stub with no motor/pymongo imports (verified by grep across non-comment lines). Only /api/ and /api/health remain locally; everything else must hit the Convex .site."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_convex_rest.py (NEW — 63-test regression)"
+  ],
+  "success_rate": {
+    "backend": "100% — 63/63 pass against the live Convex .site deployment",
+    "frontend": "skipped per request (Google OAuth cannot be automated)"
+  },
+  "seed_data_creation": "No new seed script was run. All seeded tokens (test_token_owner/agent/agent2/acct/dev) authenticated against Convex on first call (auth/me => 200), so no auth:syncSession re-sync was needed. Each write test prefixes rows with TEST_ and the autouse session cleanup fixture deletes the created route, invite and product at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with `-n 0` because the test file uses a module-level STATE dict that chains owner POSTs -> agent confirm/sale/collection (xdist loadscope would still work since all mutations live in one class, but -n 0 is safer). The Convex REST surface is at https://fearless-ostrich-878.eu-west-1.convex.site/api/*. Auth shape notes: /auth/me returns role='EMPLOYEE' + employee_type='FIELD_AGENT' for agent tokens, role='DEVELOPER' (not 'DEV') for the dev token, and role='OWNER' for owner. /org/profile returns the profile WITHOUT an id field (caller org is implicit). /notifications returns {items:[], unread:N} not a bare array. /dev/monitoring returns a list, not a dict. Product create arg schema: {name, category?, unit?, cost_price?, sale_price?, stock?, min_stock?} — no sku/price/cost. Purchase create: one product per call {product_id, quantity, unit_cost, supplier?}. Delivery items use `quantity` not `qty`. Agent customer create requires lat/lng. Owner is NOT allowed to POST /customers (agent-only).",
+  "rca_of_issue": "N/A — no bug found. All 63 assertions pass against the live Convex deployment. The migration is clean: FastAPI holds no data, every REST route is served by convex/http.ts, role gates and Arabic error payloads behave identically to the previous FastAPI implementation, and write transactions keep products/inventory/balances consistent across the owner-purchase -> owner-delivery -> agent-confirm -> agent-sale -> agent-collection chain."
+}
