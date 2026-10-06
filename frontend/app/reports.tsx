@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { money } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { FinanceCard } from "@/src/components/AlertsCard";
+import { ProUpsell } from "@/src/components/ProUpsell";
 import { useApi } from "@/src/hooks";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Card, ErrorBox, Header, IconBtn, Loading, Segments, Stat, T } from "@/src/ui";
@@ -56,6 +57,8 @@ export default function Reports() {
           <Loading />
         ) : q.error ? (
           <ErrorBox message={(q.error as Error).message} onRetry={q.refetch} />
+        ) : q.data?.locked ? (
+          <ProUpsell testID="reports-pro-upsell" reason="التقارير الأسبوعية والشهرية متاحة في خطة Pro. الخطة التجريبية تشمل التقرير اليومي فقط." />
         ) : (
           <>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>

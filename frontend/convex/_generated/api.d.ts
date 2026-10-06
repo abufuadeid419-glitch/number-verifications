@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as bridge from "../bridge.js";
 import type * as collections from "../collections.js";
+import type * as crons from "../crons.js";
 import type * as customers from "../customers.js";
 import type * as deliveries from "../deliveries.js";
 import type * as edge from "../edge.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   bridge: typeof bridge;
   collections: typeof collections;
+  crons: typeof crons;
   customers: typeof customers;
   deliveries: typeof deliveries;
   edge: typeof edge;

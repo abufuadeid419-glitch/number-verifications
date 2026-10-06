@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import {
   ANY_ORG,
   DEV,
@@ -180,18 +180,36 @@ export const debtsStale = query({
   },
 });
 
+// Builds the stale-debt digest for one org and notifies its owner + accountants.
+async function runDigest(ctx: any, org_id: string) {
+  const org: any = await orgById(ctx, org_id);
+  if (!org) return { count: 0 };
+  const stale = await staleDebtors(ctx, org_id);
+  await ctx.db.patch(org._id, { last_debt_digest_at: nowIso() });
+  if (!stale.length) return { count: 0 };
+  const accts = (await ctx.db.query("users").withIndex("by_org", (q: any) => q.eq("org_id", org_id)).collect()).filter((u: any) => u.employee_type === "ACCOUNTANT");
+  const names = stale.slice(0, 5).map((c: any) => c.name).join("، ") + (stale.length > 5 ? ` و${stale.length - 5} آخرين` : "");
+  const total = round2(stale.reduce((n: number, c: any) => n + c.balance, 0));
+  await notify(ctx, [...accts.map((a: any) => a.user_id), ...(await orgOwnerIds(ctx, org_id))], "debt_digest", "تذكير أسبوعي بالديون", `${stale.length} عميل مدين لم يتم التواصل معهم منذ ${STALE_DAYS} أيام (إجمالي ${total}): ${names}`);
+  return { count: stale.length };
+}
+
 export const debtsDigest = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
     const user = await require(ctx, token, STAFF);
-    const stale = await staleDebtors(ctx, user.org_id!);
-    await ctx.db.patch((await orgById(ctx, user.org_id!))!._id, { last_debt_digest_at: nowIso() });
-    if (!stale.length) return { count: 0 };
-    const accts = (await ctx.db.query("users").withIndex("by_org", (q) => q.eq("org_id", user.org_id!)).collect()).filter((u) => u.employee_type === "ACCOUNTANT");
-    const names = stale.slice(0, 5).map((c: any) => c.name).join("، ") + (stale.length > 5 ? ` و${stale.length - 5} آخرين` : "");
-    const total = round2(stale.reduce((n: number, c: any) => n + c.balance, 0));
-    await notify(ctx, [...accts.map((a) => a.user_id), ...(await orgOwnerIds(ctx, user.org_id!))], "debt_digest", "تذكير أسبوعي بالديون", `${stale.length} عميل مدين لم يتم التواصل معهم منذ ${STALE_DAYS} أيام (إجمالي ${total}): ${names}`);
-    return { count: stale.length };
+    return await runDigest(ctx, user.org_id!);
+  },
+});
+
+// Weekly cron (see crons.ts): digest for every active, non-expired organization.
+export const weeklyDebtDigestAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const orgs = (await ctx.db.query("organizations").collect()).filter((o: any) => o.status === "ACTIVE" && (!o.expires_at || Date.parse(o.expires_at) > Date.now()));
+    let notified = 0;
+    for (const o of orgs) if ((await runDigest(ctx, o.id)).count) notified++;
+    return { orgs: orgs.length, notified };
   },
 });
 
@@ -429,6 +447,8 @@ export const statsReports = query({
     const user = await require(ctx, token, STAFF);
     const period = p || "day";
     if (!["day", "week", "month"].includes(period)) throw new Error("فترة غير صالحة");
+    // Weekly / monthly reports are a Pro (paid licence) feature; trial orgs get daily only.
+    if (period !== "day" && (await orgById(ctx, user.org_id!))?.plan === "TRIAL") return { period, rows: [], totals: {}, locked: true };
     const n = period === "day" ? 7 : period === "week" ? 8 : 6;
     const today = new Date();
     const keys: string[] = [];

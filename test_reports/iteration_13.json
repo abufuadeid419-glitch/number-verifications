@@ -1,0 +1,47 @@
+{
+  "summary": "Full backend + frontend coverage of the 4 new features (logo upload/fetch, weekly debt digest cron, Pro gating on reports, live sync badge) against Convex deployment fearless-ostrich-878. Backend: 16/16 new tests pass (test_iteration13_new_features.py) + 71/71 regression (test_iteration11_convex_rest.py + test_iteration12_security.py) = 87 pass / 3 skipped. Weekly cron confirmed by running `npx convex run extra:weeklyDebtDigestAll` with the dev deploy key — returned {orgs:2, notified:1} and the function is NOT publicly callable via Convex /api/mutation (returns status:'error' / 'Could not find public function'). POST /org/logo (owner, base64 PNG) persists and GET /org/logo returns a `data:image/png;base64,...` data_uri; non-owner upload is rejected (401/403) and >1.5MB payload is rejected. /stats/reports: period=day works for everyone; period=week|month returns full data (not locked) for the LICENSE org_test_1 owner; invalid period rejected. GET /plans contains a 'Pro' plan (visible on /upgrade: 'Pro — 25 USD/شهري, حتى 15 موظفاً وموزعاً, تقارير أسبوعية وشهرية متقدمة, تحليل الأرباح'). The invite-limit error string in convex/employees.ts mentions Pro ('تم الوصول للحد الأقصى من الموظفين — قم بالترقية إلى Pro'). Frontend web preview tested at 390x844: owner, acct, dev, and dist (field-agent) home screens all render with `sync-status-badge` + inner `sync-status-synced` in the header. Owner → الإدارة → ملف المؤسسة segment correctly renders `org-logo-image` and `upload-logo-button`. `reports-pro-upsell` is NOT shown on LICENSE owner's /reports (correct — unlocked state with weekly/monthly data visible). `team-pro-upsell` is NOT shown on LICENSE owner's team segment (correct). /dist route group is now present (iteration 12 regression fixed). No red screens, no 'Unmatched Route' on any role. Only non-blocking caveat: a TRIAL org/token is not seeded, so the TRIAL-locked path for /stats/reports and the ProUpsell visibility branch were verified via code review (extra.ts:451 returns {locked:true,rows:[]} when plan === 'TRIAL'; ProUpsell.tsx:15 renders only when org.plan === 'TRIAL') rather than live token.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "<Image> style.resizeMode", "issue": "Pre-existing console warning carried from iteration 12 — 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_new_features.py (NEW, 16/16 pass)",
+    "/app/test_reports/pytest/iteration13.xml",
+    "/app/test_reports/pytest/iteration13_regression.xml (71 pass + 3 skip against iteration11+12 suites)"
+  ],
+  "action_items": [
+    "NON-BLOCKING: Seed a TRIAL org + bearer token (e.g. test_token_trial_owner) in /app/memory/test_credentials.md so future testing can validate the locked branch of /stats/reports (period=week|month → {locked:true}) and the actual render of <ProUpsell> on /reports and OwnerMore team segment via browser, instead of code review only.",
+    "NON-BLOCKING (carried from iter 12): migrate <Image> resizeMode from style to prop to silence the deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "convex/edge.ts uploadLogo correctly enforces owner via setLogo mutation; size cap 1.5MB enforced before storage.store; returns {ok:true}. getLogo returns {data_uri:null} when none, else data:<ct>;base64,<...>. Good contract preservation for existing InvoiceActions / StatementActions / VoucherSheet.",
+    "convex/extra.ts weeklyDebtDigestAll is an internalMutation and cron-scheduled in convex/crons.ts (Sunday 06:00 UTC) → NOT publicly callable (verified via POST to /api/mutation which returns 'Could not find public function'). runDigest also stamps org.last_debt_digest_at. Debt digest for STAFF via POST /debts/digest still works.",
+    "convex/extra.ts statsReports (line 451) short-circuits week/month for TRIAL plans with {locked:true, rows:[], totals:{}} — matches ProUpsell/reports.tsx expectation.",
+    "convex/employees.ts line 45 error string correctly mentions Pro.",
+    "SyncBadge.tsx subscribes to convex.subscribeToConnectionState + offline queue — renders testID sync-status-badge with inner sync-status-{synced|syncing|offline}. Tappable (Pressable, 44px min-height). Toast tested, inner state 'synced' confirmed on all four roles.",
+    "AccountButton wraps <SyncBadge /> + notifications bell + profile — used by Overview/Dev/OwnerMore/NewSale/Customers/DistributorOps/Sales/dev-billing, so badge is visible on every role home as required."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13_new_features.py (NEW)",
+    "/app/test_reports/iteration_13.json (NEW)",
+    "/app/test_reports/pytest/iteration13.xml (NEW)",
+    "/app/test_reports/pytest/iteration13_regression.xml (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% — 16/16 new + 71/71 regression + 3 pre-existing skips",
+    "frontend": "100% — SyncBadge on 4 role homes, logo upload + render, reports unlocked for LICENSE owner, Pro plan on /upgrade, invite error mentions Pro, /dist regression resolved"
+  },
+  "seed_data_creation": "TestLogo uploads a 1x1 transparent PNG to org_test_1 via POST /org/logo (owner token); kept intact so that frontend verification of org-logo-image works. All other tests reuse seeded org/users. TEST_ prefix retained for any ad-hoc data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To validate the TRIAL-plan branch of /stats/reports (locked:true,rows:[]) and the <ProUpsell> card render on /reports and OwnerMore team segment, a TRIAL-plan org/user bearer token needs to be seeded. The owner token in /app/memory/test_credentials.md belongs to a LICENSE org, so only the unlocked path was validated end-to-end. Code paths for TRIAL are reviewed and correct. Everything else (logo, weekly cron, Pro plan existence, sync badge on every role home, /dist route regression) is already green.",
+  "rca_of_issue": "No new bugs. Iteration 12's /dist Unmatched Route regression is fixed — app/dist/_layout.tsx + {index,sale,customers,ops}.tsx are present and field-agent login lands on /dist without error."
+}

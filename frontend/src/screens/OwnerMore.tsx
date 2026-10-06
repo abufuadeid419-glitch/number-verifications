@@ -10,6 +10,7 @@ import { AgentsMap } from "@/src/components/AgentsMap";
 import { OrgProfile } from "@/src/components/OrgProfile";
 import { OrgSettings } from "@/src/components/OrgSettings";
 import { PriceLists } from "@/src/components/PriceLists";
+import { ProUpsell } from "@/src/components/ProUpsell";
 import { RoutePlanner } from "@/src/components/RoutePlanner";
 import { OwnerStockRequests } from "@/src/components/StockRequests";
 import { OwnerWarehouseReturns } from "@/src/components/WarehouseReturns";
@@ -126,6 +127,7 @@ export default function OwnerMore() {
         ) : tab === "team" ? (
           <>
             <Btn testID="open-invite-button" title="إضافة موظف جديد" icon="person-add-outline" onPress={() => setInvite(true)} />
+            <ProUpsell testID="team-pro-upsell" reason={`الخطة التجريبية تسمح بـ ${user?.org?.max_employees ?? 3} موظفين فقط. قم بالترقية لإضافة المزيد من الموزعين.`} />
             <Section title="الموظفون">
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 {!emps.data?.employees?.length ? <Empty icon="people-outline" text="لا يوجد موظفون مفعّلون" /> : emps.data.employees.map((e: any) => (

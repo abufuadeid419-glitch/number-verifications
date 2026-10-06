@@ -217,3 +217,15 @@ write-through bridge is now unused and can be removed.
 - Testing: iteration_12 — 74/74 backend (Convex REST + security), owner/acct/dev screens OK; agent
   route fixed after report and verified by screenshot.
 - Backlog: drop unused motor/pymongo pins; remove obsolete bridge files; resizeMode deprecation warning.
+
+## Features batch (2026-06): logo, weekly digest, Pro upsell, sync badge
+- Logo on invoices: already implemented via Convex file storage (edge.ts uploadLogo/getLogo); receipts
+  (invoice/statement/collection/payment/warehouse-return) embed it. Verified end-to-end.
+- Weekly debt digest: convex/crons.ts runs internal extra:weeklyDebtDigestAll every Sunday 06:00 UTC for
+  all active orgs (shared runDigest helper; /debts/digest still available to staff).
+- Pro upsell: TRIAL orgs get daily reports only (week/month return {locked:true}); src/components/ProUpsell.tsx
+  shown on /reports and owner team tab; invite-limit error mentions Pro; "Pro" plan (25 USD/30d, 15 staff)
+  created in Convex plans; uses existing manual-payment upgrade request + developer approval flow.
+- Live connection badge: src/components/SyncBadge.tsx in AccountButton header (all roles) — Convex websocket
+  state + NetInfo + offline queue (synced / syncing N / offline).
+- Testing: iteration_13 — 87 backend pass; frontend verified (TRIAL branch by code review).

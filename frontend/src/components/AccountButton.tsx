@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 
 import { NotificationBell } from "@/src/components/NotificationBell";
+import { SyncBadge } from "@/src/components/SyncBadge";
 import { replayTour } from "@/src/components/GuidedTour";
 import { FAQ } from "@/src/legal";
 import { useSyncState } from "@/src/offline";
@@ -23,7 +24,8 @@ export function AccountButton() {
   const org = user?.org;
   return (
     <>
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+        <SyncBadge />
         <NotificationBell />
         <IconBtn testID="account-button" icon="person-circle-outline" onPress={() => setOpen(true)} />
       </View>
