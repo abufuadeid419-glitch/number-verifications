@@ -61,6 +61,7 @@ function PhoneAuth() {
   const [cc, setCc] = useState(DEFAULT_CC);
   const [local, setLocal] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [via, setVia] = useState<"sms" | "whatsapp">("sms");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [wait, setWait] = useState(0);
@@ -75,9 +76,11 @@ function PhoneAuth() {
   // Accept "0947…", "947…", "963947…" or "00963947…" in the local field.
   const localDigits = local.replace(/\D/g, "").replace(/^00/, "").replace(new RegExp(`^${ccDigits}(?=\\d{7,})`), "").replace(/^0+/, "");
   const phone = `+${ccDigits}${localDigits}`;
-  const send = async () => {
-    if (await requestOtp(phone)) {
-      setSentTo(phone);
+  const send = async (channel?: "whatsapp") => {
+    const ch = await requestOtp(sentTo ?? phone, channel);
+    if (ch) {
+      setVia(ch);
+      setSentTo(sentTo ?? phone);
       setCode("");
       setWait(RESEND_SECONDS);
     }
@@ -102,7 +105,10 @@ function PhoneAuth() {
     return (
       <View style={{ gap: spacing.md }} testID="code-step">
         <T v="h2">أدخل رمز التحقق</T>
-        <T v="caption">أرسلنا رمزاً مكوناً من 6 أرقام عبر SMS إلى <T v="label" style={{ writingDirection: "ltr" }}>{sentTo}</T></T>
+        <View testID="login-sent-via" style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <Ionicons name={via === "whatsapp" ? "logo-whatsapp" : "chatbubble-ellipses-outline"} size={18} color={via === "whatsapp" ? "#25D366" : colors.brandPrimary} />
+          <T v="caption" style={{ flex: 1 }}>أرسلنا رمزاً مكوناً من 6 أرقام عبر {via === "whatsapp" ? "واتساب" : "رسالة SMS"} إلى <T v="label" style={{ writingDirection: "ltr" }}>{sentTo}</T></T>
+        </View>
         <Field
           testID="login-code-input"
           label="رمز التحقق"
@@ -121,8 +127,11 @@ function PhoneAuth() {
         <Btn testID="login-verify-button" title="تحقق ودخول" icon="checkmark" loading={busy} disabled={code.length !== 6} onPress={() => verifyOtp(sentTo, code)} />
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Btn testID="login-change-phone" variant="ghost" small title="تغيير الرقم" onPress={() => setSentTo(null)} />
-          <Btn testID="login-resend-button" variant="ghost" small title={wait > 0 ? `إعادة الإرسال (${wait})` : "إعادة إرسال الرمز"} disabled={wait > 0 || busy} onPress={send} />
+          <Btn testID="login-resend-button" variant="ghost" small title={wait > 0 ? `إعادة الإرسال (${wait})` : "إعادة إرسال الرمز"} disabled={wait > 0 || busy} onPress={() => send()} />
         </View>
+        {via === "sms" && (
+          <Btn testID="login-whatsapp-button" variant="secondary" icon="logo-whatsapp" title="لم يصلك الرمز؟ أرسله عبر واتساب" disabled={wait > 30 || busy} onPress={() => send("whatsapp")} />
+        )}
       </View>
     );
   }
@@ -148,12 +157,12 @@ function PhoneAuth() {
           placeholder="9XXXXXXXX"
           placeholderTextColor={colors.muted}
           returnKeyType="done"
-          onSubmitEditing={send}
+          onSubmitEditing={() => send()}
           style={[inputStyle(colors), { flex: 1, textAlign: "left", writingDirection: "ltr" }]}
         />
       </View>
       {err}
-      <Btn testID="login-send-code-button" title="إرسال رمز التحقق" icon="chatbubble-ellipses-outline" loading={busy} disabled={local.replace(/\D/g, "").length < 6} onPress={send} />
+      <Btn testID="login-send-code-button" title="إرسال رمز التحقق" icon="chatbubble-ellipses-outline" loading={busy} disabled={local.replace(/\D/g, "").length < 6} onPress={() => send()} />
       {terms}
     </View>
   );

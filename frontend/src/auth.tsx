@@ -25,7 +25,7 @@ type Ctx = {
   token: string | null | undefined;
   error: string | null;
   busy: boolean;
-  requestOtp: (phone: string) => Promise<boolean>;
+  requestOtp: (phone: string, channel?: "whatsapp") => Promise<"sms" | "whatsapp" | null>;
   verifyOtp: (phone: string, code: string) => Promise<boolean>;
   saveName: (name: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -83,8 +83,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [clear]);
 
+  // Resolves to the channel the code was sent on, or null on failure.
   const requestOtp = useCallback(
-    (phone: string) => run(async () => { await api("/auth/otp/request", { method: "POST", body: { phone } }); }),
+    async (phone: string, channel?: "whatsapp") => {
+      let sent: "sms" | "whatsapp" | null = null;
+      await run(async () => {
+        const r = await api<{ channel: "sms" | "whatsapp" }>("/auth/otp/request", { method: "POST", body: { phone, channel } });
+        sent = r.channel;
+      });
+      return sent;
+    },
     [run],
   );
 

@@ -58,27 +58,57 @@ export const dropOtp = internalMutation({
   },
 });
 
-// POST /api/auth/otp/request — generate a code and send it by SMS through Bird.
+async function sendSms(phone: string, code: string) {
+  const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/sms/messages`, {
+    method: "POST",
+    headers: birdHeaders(),
+    body: JSON.stringify({ to: phone, text: `رمز التحقق في النظام الذكي: ${code}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.`, category: "authentication" }),
+  });
+  return { ok: r.ok, status: r.status, body: r.ok ? "" : await r.text() };
+}
+
+// WhatsApp authentication template (Bird-managed `bird_otp` by default; override via Convex env).
+async function sendWhatsApp(phone: string, code: string) {
+  const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/whatsapp/messages`, {
+    method: "POST",
+    headers: birdHeaders(),
+    body: JSON.stringify({
+      to: phone,
+      template: {
+        slug: process.env.BIRD_WHATSAPP_TEMPLATE || "bird_otp",
+        language: process.env.BIRD_WHATSAPP_LANGUAGE || "en",
+        components: [{ type: "body", parameters: [{ type: "text", text: code }] }],
+      },
+    }),
+  });
+  return { ok: r.ok, status: r.status, body: r.ok ? "" : await r.text() };
+}
+
+const isBadRecipient = (body: string) => /SMSInvalidRecipient|E12087|InvalidRecipient/.test(body);
+
+// POST /api/auth/otp/request — send the code by SMS; if SMS can't reach the number, fall back to WhatsApp.
+// `channel: "whatsapp"` lets the user explicitly ask for WhatsApp (e.g. SMS never arrived).
 export const requestOtp = action({
-  args: { phone: v.string() },
-  handler: async (ctx, { phone: raw }) => {
+  args: { phone: v.string(), channel: v.optional(v.string()) },
+  handler: async (ctx, { phone: raw, channel }) => {
     const phone = raw.trim();
     if (!PHONE_RE.test(phone)) throw new Error("أدخل رقم هاتف صحيح مع رمز الدولة");
     const code = randomCode();
     const otpId = await ctx.runMutation(internal.edge.storeOtp, { phone, code_hash: await hashCode(phone, code) });
-    const r = await fetch(`${process.env.BIRD_BASE_URL}/v1/sms/messages`, {
-      method: "POST",
-      headers: birdHeaders(),
-      body: JSON.stringify({ to: phone, text: `رمز التحقق في النظام الذكي: ${code}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.`, category: "authentication" }),
-    });
-    if (!r.ok) {
-      const body = await r.text();
-      console.error("bird sms failed", r.status, body.slice(0, 300));
-      await ctx.runMutation(internal.edge.dropOtp, { id: otpId });
-      if (body.includes("E12020")) throw new Error("إرسال الرسائل إلى هذه الدولة غير مفعّل حالياً، تواصل مع الدعم");
-      throw new Error(birdError(r.status));
+    if (channel !== "whatsapp") {
+      const sms = await sendSms(phone, code);
+      if (sms.ok) return { ok: true, channel: "sms" };
+      console.error("bird sms failed", sms.status, sms.body.slice(0, 300));
+      if (isBadRecipient(sms.body)) {
+        await ctx.runMutation(internal.edge.dropOtp, { id: otpId });
+        throw new Error("رقم الهاتف غير صالح أو غير مدعوم");
+      }
     }
-    return { ok: true };
+    const wa = await sendWhatsApp(phone, code);
+    if (wa.ok) return { ok: true, channel: "whatsapp" };
+    console.error("bird whatsapp failed", wa.status, wa.body.slice(0, 300));
+    await ctx.runMutation(internal.edge.dropOtp, { id: otpId });
+    throw new Error(wa.status === 429 ? birdError(429) : "تعذر إرسال رمز التحقق عبر الرسائل أو واتساب، حاول لاحقاً");
   },
 });
 
