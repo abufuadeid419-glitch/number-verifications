@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 16 — WhatsApp fallback for Bird OTP sending. Backend: 9/9 pytest pass in test_iteration16_whatsapp_otp.py against https://fearless-ostrich-878.eu-west-1.convex.site/api. (a) POST /auth/otp/request {phone:'+10000005', channel:'whatsapp'} → 400 'تعذر إرسال رمز التحقق عبر الرسائل أو واتساب، حاول لاحقاً' confirming Bird WhatsApp accepted (202) then async-rejected the fake US number (price_not_found); the response is ~3s (poll inside sendWhatsApp). A second identical request immediately after is NOT blocked by the 30s cooldown ('انتظر قليلاً' is absent) — proof that dropOtp removed the otp_requests row. (b) POST /auth/otp/request {phone:'+10000006'} (no channel) → 400 Arabic error (SMS invalid-recipient branch 'رقم الهاتف غير صالح أو غير مدعوم' or fall-through WA error — both are allowed by spec) and no cooldown on retry. (c) Invalid phone '12' → 400 'أدخل رقم هاتف صحيح مع رمز الدولة'. (d) POST /auth/otp/verify with no prior request (+10000099) → 400 'اطلب رمز تحقق أولاً'; wrong-format code 'abc' → 400 'رمز التحقق غير صحيح'. (e) GET /auth/me with all 4 seeded tokens (owner/agent/acct/dev) returns 200 with the expected phone + role (regression). Frontend web preview (390×844): /login renders login-screen → phone-step with login-country-code-input default='+963', login-phone-input, login-send-code-button. Typing CC='+1' + local='5550000005' and pressing send surfaces login-error with the real Bird-side Arabic message ('رقم الهاتف غير صالح أو غير مدعوم'); still on phone-step, no code-step rendered. localStorage round-trip with test_token_owner loads /owner home (name 'مالك', org 'TEST مؤسسة الاختبار', sync-status 'متزامن'). code-step UI (login-sent-via SMS/WhatsApp icon+text and login-whatsapp-button for SMS sends, 60s resend countdown) is verified by code review (app/login.tsx lines 104-134).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_whatsapp_otp.py (NEW, 9/9 pass)",
+    "/app/test_reports/pytest/iteration16.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "convex/edge.ts sendWhatsApp (lines 71-94): on Bird 202 accepted, polls GET /v1/whatsapp/messages/{id} ~2.5s later and treats status in {rejected,failed} as a failure — this is exactly how price_not_found on fake numbers surfaces to the user. requestOtp (lines 100-122) then calls dropOtp so no otp_requests row remains, so there is no 30s cooldown or hourly count consumed on a Bird-rejected send. Both behaviors match the review spec.",
+    "convex/edge.ts PHONE_RE /^\\+[1-9]\\d{7,14}$/ rejects '12' with the expected format error before any Bird call.",
+    "convex/edge.ts verifyOtp (lines 125-135) validates both phone format and /^\\d{6}$/ code format, throwing 'رمز التحقق غير صحيح' for non-6-digit input. checkOtp (lines 138-152) returns 'اطلب رمز تحقق أولاً' when no otp_requests row exists for the phone — matches spec.",
+    "convex/edge.ts isBadRecipient regex /SMSInvalidRecipient|E12087|InvalidRecipient/ matches Bird SMS invalid-recipient payloads, so fake-number SMS fast-fails to 'رقم الهاتف غير صالح أو غير مدعوم' and skips the WA fallback (no second row left).",
+    "app/login.tsx code-step (lines 104-136): login-sent-via shows WhatsApp logo (#25D366) or chatbubble icon with Arabic 'واتساب'/'رسالة SMS' text; login-whatsapp-button appears only when via==='sms' and is disabled while wait>30 — exactly as requested."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_whatsapp_otp.py (NEW)",
+    "/app/test_reports/iteration_16.json (NEW)",
+    "/app/test_reports/pytest/iteration16.xml (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% — 9/9 iteration-16 tests pass",
+    "frontend": "100% — login phone-step → Bird async-reject surface + seeded owner home load"
+  },
+  "seed_data_creation": "No persistent seed. otp_requests rows for fake numbers +10000005 / +10000006 / +10000099 / +10000055 are either dropped by dropOtp on Bird rejection or never created (format/no-request paths). No orgs/users/sessions created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bird WhatsApp scope (whatsapp:write) is now granted and verified end-to-end: Bird accepts the POST /v1/whatsapp/messages bird_otp request (202) but the fake +1000000x numbers are rejected asynchronously with price_not_found, which the backend correctly surfaces as 'تعذر إرسال رمز التحقق عبر الرسائل أو واتساب، حاول لاحقاً' with no cooldown consumed. SMS to Syria remains externally blocked by Bird. ONLY use the fake +1000000x numbers for Bird-reject tests (never real +963 numbers other than the 4 seeded accounts). Seeded bearer tokens are the only authenticated-flow automation entry point.",
+  "rca_of_issue": "No bugs. All review-request behaviors (WA error wording, dropOtp on failure, ~3s response time, SMS fast-fail path, verify error wording, seeded-token regression) are implemented and verified."
+}

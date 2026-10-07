@@ -259,3 +259,5 @@ write-through bridge is now unused and can be removed.
 - FIX (2026-06): SMS failed with Bird E12020 SMSDestinationNotEnabled (Syria not enabled in Bird workspace). Failed sends now dropped (no cooldown/limit consumed), clear Arabic error; login strips duplicated country code / 00 prefix.
 
 - WhatsApp fallback (2026-06): requestOtp sends SMS; on SMS failure (except invalid recipient) or channel:"whatsapp" it sends Bird WhatsApp template (POST /v1/whatsapp/messages, env BIRD_WHATSAPP_TEMPLATE default bird_otp, BIRD_WHATSAPP_LANGUAGE default en). Returns {channel}. Login shows channel + "أرسله عبر واتساب" button. BLOCKER: key lacks whatsapp:write scope; Syria SMS destination not enabled.
+
+- WhatsApp verified (2026-06): key now has whatsapp:write; Bird returns 202 for bird_otp (en/ar). BIRD_WHATSAPP_LANGUAGE=ar. sendWhatsApp polls message status after 2.5s and surfaces async rejection. iteration_16: 9/9 backend + frontend pass. SMS to Syria still not enabled in Bird (external).

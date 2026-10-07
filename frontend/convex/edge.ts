@@ -81,7 +81,16 @@ async function sendWhatsApp(phone: string, code: string) {
       },
     }),
   });
-  return { ok: r.ok, status: r.status, body: r.ok ? "" : await r.text() };
+  if (!r.ok) return { ok: false, status: r.status, body: await r.text() };
+  // Bird accepts asynchronously (202). Check once shortly after so an immediate rejection
+  // (no balance, unsupported destination) surfaces to the user instead of a code that never arrives.
+  const msg: any = await r.json().catch(() => ({}));
+  if (msg?.id) {
+    await new Promise((res) => setTimeout(res, 2500));
+    const st: any = await fetch(`${process.env.BIRD_BASE_URL}/v1/whatsapp/messages/${msg.id}`, { headers: birdHeaders() }).then((x) => x.json()).catch(() => ({}));
+    if (st?.status === "rejected" || st?.status === "failed") return { ok: false, status: 422, body: JSON.stringify(st.last_error ?? st) };
+  }
+  return { ok: true, status: r.status, body: "" };
 }
 
 const isBadRecipient = (body: string) => /SMSInvalidRecipient|E12087|InvalidRecipient/.test(body);
